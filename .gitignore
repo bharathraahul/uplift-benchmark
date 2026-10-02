@@ -1,0 +1,20 @@
+# Data: ignore contents, keep folder structure
+data/**
+!data/**/
+!data/**/.gitkeep
+
+# Virtual environment
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Jupyter
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
+
+# Editor settings
+.vscode/
