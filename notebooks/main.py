@@ -46,3 +46,29 @@ plt.tight_layout()
 plt.show()  
 
 
+plt.figure(figsize=(10, 5))
+treated_positive = df2[df2['treatment']==1]['f0'].quantile(q)
+untreated_positive = df2[df2['treatment']==0]['f0'].quantile(q)
+plt.plot(q * 100, treated_positive.values, linewidth=2, color='blue', label='Ad group', alpha=0.9)
+plt.plot(q * 100, untreated_positive.values, linewidth=2, color='orange', label='No-ad group', alpha=0.9)
+plt.title('Feature 0 Quantiles by Treatment Group')
+plt.xlabel('Percentile of rows (%)')
+plt.ylabel('Feature 0 Value')
+plt.legend()
+plt.grid(alpha=0.3)
+plt.tight_layout()
+plt.show()
+
+
+plt.figure(figsize=(10, 5))
+for i in range(12):
+    SMD = (df2[df2['treatment']==1][f'f{i}'].mean() - df2[df2['treatment']==0][f'f{i}'].mean()) / np.sqrt((df2[df2['treatment']==1][f'f{i}'].var() + df2[df2['treatment']==0][f'f{i}'].var()) / 2)
+    plt.bar(f'f{i}', SMD, color='blue', alpha=0.9)
+    print(f'SMD for f{i}: {SMD:.4f}')
+plt.title('SMD by Feature: Ad group vs No-ad group')
+plt.xlabel('Feature')
+plt.ylabel('SMD Value')
+plt.grid(alpha=0.3)
+plt.tight_layout()
+plt.show()
+
