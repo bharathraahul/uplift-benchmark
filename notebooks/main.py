@@ -65,10 +65,13 @@ for i in range(12):
     SMD = (df2[df2['treatment']==1][f'f{i}'].mean() - df2[df2['treatment']==0][f'f{i}'].mean()) / np.sqrt((df2[df2['treatment']==1][f'f{i}'].var() + df2[df2['treatment']==0][f'f{i}'].var()) / 2)
     plt.bar(f'f{i}', SMD, color='blue', alpha=0.9)
     print(f'SMD for f{i}: {SMD:.4f}')
+plt.axhline(0.1, color='red', linestyle='--', linewidth=1)
+plt.axhline(-0.1, color='red', linestyle='--', linewidth=1)
 plt.title('SMD by Feature: Ad group vs No-ad group')
 plt.xlabel('Feature')
 plt.ylabel('SMD Value')
 plt.grid(alpha=0.3)
 plt.tight_layout()
+plt.savefig('figures/smd_balance.png', dpi=150)
 plt.show()
 
