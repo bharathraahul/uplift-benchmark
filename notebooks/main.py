@@ -17,7 +17,10 @@ df1['treatment'] = df1['treatment'].astype('int16')
 #df1['outcome'] = df1['outcome'].astype('int16')
 #df1['day'] = df1['day'].astype('int16')
 #df1['hour'] = df1['hour'].astype('int16')
-
+df1['visit'] = df1['visit'].astype('int8')
+df1['conversion']= df1['conversion'].astype('int8')
+df1['exposure'] = df1['exposure'].astype('int16')
+ 
 df2 = df1.sample(frac=1, random_state=42).reset_index(drop=True)
 
 
@@ -75,3 +78,13 @@ plt.tight_layout()
 plt.savefig('figures/smd_balance.png', dpi=150)
 plt.show()
 
+
+visit_mean_treated = df2[df2['treatment']==1]['visit'].mean()
+visit_mean_untreated = df2[df2['treatment']==0]['visit'].mean()
+print(f'Mean visit for Ad group: {visit_mean_treated:.4f}')
+print(f'Mean visit for No-ad group: {visit_mean_untreated:.4f}')
+
+conversion_mean_treated = df2[df2['treatment']==1]['conversion'].mean()
+conversion_mean_untreated = df2[df2['treatment']==0]['conversion'].mean()
+print(f'Mean conversion for Ad group: {conversion_mean_treated:.4f}')
+print(f'Mean conversion for No-ad group: {conversion_mean_untreated:.4f}')
