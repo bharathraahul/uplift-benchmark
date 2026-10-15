@@ -84,7 +84,22 @@ visit_mean_untreated = df2[df2['treatment']==0]['visit'].mean()
 print(f'Mean visit for Ad group: {visit_mean_treated:.4f}')
 print(f'Mean visit for No-ad group: {visit_mean_untreated:.4f}')
 
+ate_visit = visit_mean_treated - visit_mean_untreated
+print(f'ATE for visit: {ate_visit:.4f}')
+
 conversion_mean_treated = df2[df2['treatment']==1]['conversion'].mean()
 conversion_mean_untreated = df2[df2['treatment']==0]['conversion'].mean()
 print(f'Mean conversion for Ad group: {conversion_mean_treated:.4f}')
 print(f'Mean conversion for No-ad group: {conversion_mean_untreated:.4f}')
+
+ate_conversion = conversion_mean_treated - conversion_mean_untreated
+print(f'ATE for conversion: {ate_conversion:.4f}')  
+
+
+exposure_mean_treated = df2[df2['treatment']==1]['exposure'].mean()
+exposure_mean_untreated = df2[df2['treatment']==0]['exposure'].mean()
+print(f'Mean exposure for Ad group: {exposure_mean_treated:.4f}')
+print(f'Mean exposure for No-ad group: {exposure_mean_untreated:.4f}')
+
+ate_exposure = exposure_mean_treated - exposure_mean_untreated
+print(f'ATE for exposure: {ate_exposure:.4f}')
