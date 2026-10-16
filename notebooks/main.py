@@ -105,7 +105,7 @@ ate_exposure = exposure_mean_treated - exposure_mean_untreated
 print(f'ATE for exposure: {ate_exposure:.4f}')
 
 treatment_share = (df2['treatment'] == 1).mean()
-print(f'Share of Ad group: {treatment_share[0]:.4f}')
+print(f'Share of Ad group: {treatment_share:.4f}')
 
 exposure_zero_no_ad = df2[df2['treatment']==0]['exposure'].value_counts()
 print(f'Exposure distribution for No-ad group:\n{exposure_zero_no_ad}')
