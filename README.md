@@ -28,7 +28,7 @@ uplift-benchmark/
 │   └── processed/      # cleaned parquet written by the script (not tracked)
 ├── figures/            # saved charts
 ├── notebooks/
-│   └── main.py         # end-to-end analysis script
+│   └── main.py         # builds the Parquet on first run, then runs the analysis
 ├── src/                # reusable code (empty for now)
 ├── DECISIONS.md        # log of analysis decisions
 └── requirements.txt
@@ -62,13 +62,13 @@ python notebooks/main.py
 
 The script:
 
-1. Loads the raw CSV, drops missing rows, and saves `data/processed/criteo-uplift-v2.1.parquet`.
-2. Casts columns to smaller types (`float32` features, `int8`/`int16` flags) and shuffles the rows.
+1. **On the first run only**, reads the raw CSV, drops missing rows, casts columns to smaller types (`float32` features, `int8`/`int16` flags) and saves `data/processed/criteo-uplift-v2.1.parquet` (about 158 MB on disk, 0.75 GB in memory). Later runs skip this and load only the Parquet. To rebuild it, delete the Parquet file.
+2. Loads the Parquet file and shuffles the rows.
 3. Plots each feature's sorted values (quantile curves) and compares f0 between the ad and no-ad groups.
 4. Checks covariate balance with the standardized mean difference (SMD) and saves `figures/smd_balance.png`.
 5. Prints average treatment effects (ATE) for visit, conversion and exposure.
 
-Each chart opens in a window; close it to continue to the next step. Loading the full CSV takes several minutes and needs a few GB of RAM.
+Each chart opens in a window; close it to continue to the next step.
 
 ## Findings so far
 
