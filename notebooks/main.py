@@ -117,3 +117,40 @@ print(f'Exposure distribution for No-ad group:\n{exposure_zero_no_ad}')
 
 
 SE = np.sqrt((df_shuffled[df_shuffled['treatment']==1]['visit'].var()/df_shuffled[df_shuffled['treatment']==1].shape[0] + (df_shuffled[df_shuffled['treatment']==0]['visit'].var()/df_shuffled[df_shuffled['treatment']==0].shape[0])))
+
+
+conf_interval_visit = ate_visit - 1.96*SE, ate_visit + 1.96*SE
+
+conf_interval_conversion = ate_conversion - 1.96*SE, ate_conversion + 1.96*SE
+
+relative_lift_visit = ate_visit / visit_mean_untreated
+relative_lift_conversion = ate_conversion / conversion_mean_untreated
+
+interval = np.random.uniform(0, 1, size=10000)
+
+
+# Bootstrap 95% interval for the conversion ATE, on a 1M-user subsample to keep it fast.
+# Users are resampled with replacement within each group, so group sizes stay fixed.
+boot_sample = df_shuffled.sample(n=1_000_000, random_state=42)
+conversion_ad = boot_sample[boot_sample['treatment']==1]['conversion'].to_numpy()
+conversion_no_ad = boot_sample[boot_sample['treatment']==0]['conversion'].to_numpy()
+
+rng = np.random.default_rng(42)
+n_boot = 1000
+boot_ates = np.empty(n_boot)
+for b in range(n_boot):
+    resampled_ad = rng.choice(conversion_ad, size=len(conversion_ad), replace=True)
+    resampled_no_ad = rng.choice(conversion_no_ad, size=len(conversion_no_ad), replace=True)
+    boot_ates[b] = resampled_ad.mean() - resampled_no_ad.mean()
+
+boot_low, boot_high = np.percentile(boot_ates, [2.5, 97.5])
+
+# Normal interval on the same subsample, for comparison.
+ate_conversion_sub = conversion_ad.mean() - conversion_no_ad.mean()
+SE_conversion_sub = np.sqrt(conversion_ad.var(ddof=1)/len(conversion_ad) + conversion_no_ad.var(ddof=1)/len(conversion_no_ad))
+
+print(f'ATE for conversion (1M subsample): {ate_conversion_sub:.6f}')
+print(f'Bootstrap 95% CI ({n_boot} resamples): [{boot_low:.6f}, {boot_high:.6f}]')
+print(f'Normal 95% CI (same subsample):    [{ate_conversion_sub - 1.96*SE_conversion_sub:.6f}, {ate_conversion_sub + 1.96*SE_conversion_sub:.6f}]')
+
+
