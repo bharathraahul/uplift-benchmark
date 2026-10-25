@@ -3,6 +3,7 @@ import numpy as np
 import sys
 import os
 import matplotlib.pyplot as plt
+import statsmodels.api as sm
 #print(sys.executable)
 parquet_path = "data/processed/criteo-uplift-v2.1.parquet"
 
@@ -152,5 +153,58 @@ SE_conversion_sub = np.sqrt(conversion_ad.var(ddof=1)/len(conversion_ad) + conve
 print(f'ATE for conversion (1M subsample): {ate_conversion_sub:.6f}')
 print(f'Bootstrap 95% CI ({n_boot} resamples): [{boot_low:.6f}, {boot_high:.6f}]')
 print(f'Normal 95% CI (same subsample):    [{ate_conversion_sub - 1.96*SE_conversion_sub:.6f}, {ate_conversion_sub + 1.96*SE_conversion_sub:.6f}]')
+
+
+# Robustness check: covariate-adjusted ATE. Regress conversion on treatment + f0..f11 (OLS, robust SEs).
+# If the treatment coefficient is close to the simple ATE, the small feature imbalance does not matter.
+X = sm.add_constant(df_shuffled[['treatment'] + [f'f{i}' for i in range(12)]].astype('float64'))
+adjusted_model = sm.OLS(df_shuffled['conversion'].astype('float64'), X).fit(cov_type='HC1')
+ate_conversion_adjusted = adjusted_model.params['treatment']
+adjusted_low, adjusted_high = adjusted_model.conf_int().loc['treatment']
+
+print(f'Simple ATE for conversion:   {ate_conversion:.6f}')
+print(f'Adjusted ATE for conversion: {ate_conversion_adjusted:.6f}, 95% CI [{adjusted_low:.6f}, {adjusted_high:.6f}]')
+print(f'Adjusted vs simple: {(ate_conversion_adjusted - ate_conversion) / ate_conversion * 100:+.1f}%')
+
+
+# Phase 2 results table: one row per outcome.
+results = []
+for outcome in ['visit', 'conversion']:
+    ad = df_shuffled[df_shuffled['treatment']==1][outcome]
+    no_ad = df_shuffled[df_shuffled['treatment']==0][outcome]
+    ate = ad.mean() - no_ad.mean()
+    se = np.sqrt(ad.var()/len(ad) + no_ad.var()/len(no_ad))
+    adjusted_ate = sm.OLS(df_shuffled[outcome].astype('float64'), X).fit(cov_type='HC1').params['treatment']
+    results.append({
+        'outcome': outcome,
+        'no-ad rate': no_ad.mean(),
+        'ad rate': ad.mean(),
+        'ATE': ate,
+        '95% CI': f'[{ate - 1.96*se:.6f}, {ate + 1.96*se:.6f}]',
+        'relative lift': f'{ate / no_ad.mean():.1%}',
+        'adjusted ATE': adjusted_ate,
+    })
+results_table = pd.DataFrame(results).set_index('outcome')
+print(results_table.to_string(float_format='{:.6f}'.format))
+results_table.to_csv('figures/phase2_results.csv')
+
+
+# Feature checks: conversion rate across each feature's deciles, split by treatment.
+# Deciles are by rank, so features with one dominant value still get 10 equal-sized groups.
+fig, axes = plt.subplots(3, 4, figsize=(16, 10))
+for i, ax in enumerate(axes.flat):
+    bins = pd.qcut(df_shuffled[f'f{i}'].rank(method='first'), 10, labels=False)
+    rates = df_shuffled.groupby([bins, 'treatment'])['conversion'].mean().unstack()
+    ax.plot(range(len(rates)), rates[1] * 100, marker='o', label='Ad group')
+    ax.plot(range(len(rates)), rates[0] * 100, marker='o', label='No-ad group')
+    ax.set_title(f'f{i}')
+    ax.set_xlabel('Feature decile (low to high)')
+    ax.set_ylabel('Conversion rate (%)')
+    ax.grid(alpha=0.3)
+axes[0, 0].legend()
+fig.suptitle('Conversion rate by feature decile: Ad group vs No-ad group')
+plt.tight_layout()
+plt.savefig('figures/feature_conversion_by_treatment.png', dpi=150)
+plt.show()
 
 
