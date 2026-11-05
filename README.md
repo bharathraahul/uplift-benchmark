@@ -2,7 +2,7 @@
 
 Exploratory analysis of the **Criteo Uplift Prediction dataset (v2.1)**, a step toward benchmarking uplift models. The goal is to measure how much showing an ad changes user behaviour (visits and conversions), not just who is likely to convert.
 
-> **Status:** early exploration. Data prep, feature distributions, a covariate-balance check and average treatment effects are done. No uplift models have been built yet.
+> **Status:** data prep, a covariate-balance check, average treatment effects and a train/validation/test split are done. Baseline uplift models (T-learner and S-learner) are fit; evaluating them on validation is next.
 
 ## Dataset
 
@@ -19,18 +19,30 @@ Exploratory analysis of the **Criteo Uplift Prediction dataset (v2.1)**, a step 
 | `visit` | 0/1 | 1 = user visited the advertiser's site |
 | `conversion` | 0/1 | 1 = user converted |
 
+The data prep notebook adds two columns to the Parquet:
+
+| Column | Type | Meaning |
+|---|---|---|
+| `split` | train / validation / test | 60/20/20 split, with the same treatment and conversion mix in each |
+| `dev` | bool | True for a 1.5M-row sample of train, used for quick experiments |
+
 ## Project structure
 
 ```
 uplift-benchmark/
 ├── data/
-│   ├── raw/            # criteo-uplift-v2.1.csv (not tracked by git)
-│   └── processed/      # cleaned parquet written by the script (not tracked)
-├── figures/            # saved charts
+│   ├── raw/                      # criteo-uplift-v2.1.csv (not tracked by git)
+│   └── processed/                # Parquet with split and dev columns (not tracked)
+├── figures/                      # saved charts and the results table
 ├── notebooks/
-│   └── main.py         # builds the Parquet on first run, then runs the analysis
-├── src/                # reusable code (empty for now)
-├── DECISIONS.md        # log of analysis decisions
+│   ├── 01_data_prep.ipynb        # builds the Parquet, makes the split and dev sample
+│   ├── 02_audit.ipynb            # feature distributions, covariate balance, exposure
+│   ├── 03_ate.ipynb              # average treatment effects and robustness checks
+│   ├── 04_uplift_baselines.ipynb # T-learner and S-learner uplift models
+│   └── main.py                   # original all-in-one script (audit + ATE, no split)
+├── src/
+│   └── effects.py                # smd() and ate() used by the notebooks
+├── DECISIONS.md                  # log of analysis decisions
 └── requirements.txt
 ```
 
@@ -46,7 +58,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Download the dataset (about 311 MB compressed, 3.2 GB unzipped) from the Criteo page linked above into `data/raw/`, then unzip it. The script reads the uncompressed CSV:
+Download the dataset (about 311 MB compressed, 3.2 GB unzipped) from the Criteo page linked above into `data/raw/`, then unzip it. The data prep notebook reads the uncompressed CSV:
 
 ```bash
 gunzip -k data/raw/criteo-uplift-v2.1.csv.gz
@@ -54,21 +66,22 @@ gunzip -k data/raw/criteo-uplift-v2.1.csv.gz
 
 ## Running
 
-Run from the repository root, because the script uses relative paths:
+Run the notebooks in order from the `notebooks/` folder (their paths start with `../`):
 
-```bash
-python notebooks/main.py
+1. **`01_data_prep.ipynb`**: on the first run only, reads the raw CSV, drops missing rows, casts columns to smaller types (`float32` features, `int8`/`int16` flags) and saves `data/processed/criteo-uplift-v2.1.parquet` (about 158 MB on disk). It then adds the `split` and `dev` columns and prints a check that every split has the same treatment share and outcome rates. To rebuild everything, delete the Parquet file.
+2. **`02_audit.ipynb`**: plots each feature's sorted values, checks covariate balance with the standardized mean difference (SMD), saves `figures/smd_balance.png` and checks exposure.
+3. **`03_ate.ipynb`**: average treatment effects for visit and conversion, a bootstrap CI, a covariate-adjusted ATE, and `figures/phase2_results.csv`.
+4. **`04_uplift_baselines.ipynb`**: fits T-learner and S-learner models on the dev sample and scores validation users. Loads train and validation only.
+
+`main.py` is the original script covering steps 2 and 3. It uses root-relative paths, so run it from the repository root with `python notebooks/main.py`.
+
+### Test set rule
+
+The test split is locked until the final evaluation. After the split check in `01_data_prep.ipynb`, every notebook loads data without it:
+
+```python
+pd.read_parquet(parquet_path, filters=[('split', '!=', 'test')])
 ```
-
-The script:
-
-1. **On the first run only**, reads the raw CSV, drops missing rows, casts columns to smaller types (`float32` features, `int8`/`int16` flags) and saves `data/processed/criteo-uplift-v2.1.parquet` (about 158 MB on disk, 0.75 GB in memory). Later runs skip this and load only the Parquet. To rebuild it, delete the Parquet file.
-2. Loads the Parquet file and shuffles the rows.
-3. Plots each feature's sorted values (quantile curves) and compares f0 between the ad and no-ad groups.
-4. Checks covariate balance with the standardized mean difference (SMD) and saves `figures/smd_balance.png`.
-5. Prints average treatment effects (ATE) for visit, conversion and exposure.
-
-Each chart opens in a window; close it to continue to the next step.
 
 ## Findings so far
 
@@ -92,6 +105,20 @@ Difference in means between the ad and no-ad groups, with 95% confidence interva
 | Conversion | 0.309% | 0.194% | +0.115 pp | [0.108, 0.122] pp | +59% |
 
 These are **intent-to-treat** effects. They compare users *assigned* to the ad group with users who weren't, regardless of whether an ad was shown. Only **3.6%** of the ad group was actually exposed, and nobody in the no-ad group was. The effect on users who actually saw an ad is therefore much larger than the numbers above.
+
+### Primary outcome
+
+**Visit** is the primary modeling target and conversion is secondary. Conversion is too rare for reliable uplift estimates: the test split has only 813 no-ad conversions, against 15,982 no-ad visits. See [DECISIONS.md](DECISIONS.md).
+
+### Baseline uplift models
+
+`04_uplift_baselines.ipynb` fits two standard uplift models with LightGBM on the 1.5M-row dev sample, with visit as the target:
+
+- **T-learner**: one model for the ad group and one for the no-ad group. Predicted uplift is the difference between them.
+- **S-learner**: one model with `treatment` as a feature. Predicted uplift is its prediction with treatment = 1 minus treatment = 0.
+- **Random scores**, as the baseline to beat.
+
+The models are not evaluated yet. Next is ranking quality on validation (Qini and uplift curves).
 
 ## Decisions log
 
