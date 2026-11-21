@@ -2,7 +2,7 @@
 
 Exploratory analysis of the **Criteo Uplift Prediction dataset (v2.1)**, a step toward benchmarking uplift models. The goal is to measure how much showing an ad changes user behaviour (visits and conversions), not just who is likely to convert.
 
-> **Status:** data prep, a covariate-balance check, average treatment effects and a train/validation/test split are done. Baseline uplift models (T-learner and S-learner) are fit; evaluating them on validation is next.
+> **Status:** data prep, a covariate-balance check, average treatment effects and a train/validation/test split are done. Baseline models (T-learner, S-learner and a response model) are fit; evaluating them on validation is next.
 
 ## Dataset
 
@@ -38,7 +38,7 @@ uplift-benchmark/
 │   ├── 01_data_prep.ipynb        # builds the Parquet, makes the split and dev sample
 │   ├── 02_audit.ipynb            # feature distributions, covariate balance, exposure
 │   ├── 03_ate.ipynb              # average treatment effects and robustness checks
-│   ├── 04_uplift_baselines.ipynb # T-learner and S-learner uplift models
+│   ├── 04_uplift_baselines.ipynb # T-learner, S-learner and response-model baselines
 │   └── main.py                   # original all-in-one script (audit + ATE, no split)
 ├── src/
 │   └── effects.py                # smd() and ate() used by the notebooks
@@ -71,13 +71,13 @@ Run the notebooks in order from the `notebooks/` folder (their paths start with 
 1. **`01_data_prep.ipynb`**: on the first run only, reads the raw CSV, drops missing rows, casts columns to smaller types (`float32` features, `int8`/`int16` flags) and saves `data/processed/criteo-uplift-v2.1.parquet` (about 158 MB on disk). It then adds the `split` and `dev` columns and prints a check that every split has the same treatment share and outcome rates. To rebuild everything, delete the Parquet file.
 2. **`02_audit.ipynb`**: plots each feature's sorted values, checks covariate balance with the standardized mean difference (SMD), saves `figures/smd_balance.png` and checks exposure.
 3. **`03_ate.ipynb`**: average treatment effects for visit and conversion, a bootstrap CI, a covariate-adjusted ATE, and `figures/phase2_results.csv`.
-4. **`04_uplift_baselines.ipynb`**: fits T-learner and S-learner models on the dev sample and scores validation users. Loads train and validation only.
+4. **`04_uplift_baselines.ipynb`**: fits T-learner, S-learner and response models on the dev sample and scores validation users. Loads train and validation only.
 
 `main.py` is the original script covering steps 2 and 3. It uses root-relative paths, so run it from the repository root with `python notebooks/main.py`.
 
 ### Test set rule
 
-The test split is locked until the final evaluation. After the split check in `01_data_prep.ipynb`, every notebook loads data without it:
+The test split is locked until the final evaluation. `02_audit.ipynb` and `03_ate.ipynb` use all rows, test included, because they describe the whole dataset and were written before the split. Every modeling notebook, from `04_uplift_baselines.ipynb` on, loads data without test:
 
 ```python
 pd.read_parquet(parquet_path, filters=[('split', '!=', 'test')])
@@ -106,6 +106,8 @@ Difference in means between the ad and no-ad groups, with 95% confidence interva
 
 These are **intent-to-treat** effects. They compare users *assigned* to the ad group with users who weren't, regardless of whether an ad was shown. Only **3.6%** of the ad group was actually exposed, and nobody in the no-ad group was. The effect on users who actually saw an ad is therefore much larger than the numbers above.
 
+Adjusting for the 12 features lowers both ATEs more than randomization alone would predict: visit drops from +1.03 to +0.70 pp and conversion from +0.115 to +0.092 pp. The likely cause is that the dataset pools several tests with different ad/no-ad ratios. See [DECISIONS.md](DECISIONS.md).
+
 ### Primary outcome
 
 **Visit** is the primary modeling target and conversion is secondary. Conversion is too rare for reliable uplift estimates: the test split has only 813 no-ad conversions, against 15,982 no-ad visits. See [DECISIONS.md](DECISIONS.md).
@@ -116,7 +118,8 @@ These are **intent-to-treat** effects. They compare users *assigned* to the ad g
 
 - **T-learner**: one model for the ad group and one for the no-ad group. Predicted uplift is the difference between them.
 - **S-learner**: one model with `treatment` as a feature. Predicted uplift is its prediction with treatment = 1 minus treatment = 0.
-- **Random scores**, as the baseline to beat.
+- **Response model**: predicts visit and ignores treatment, like a standard targeting model. It ranks likely visitors first, who may visit anyway. This is the baseline most worth beating.
+- **Random scores**, as the floor every model should clear.
 
 The models are not evaluated yet. Next is ranking quality on validation (Qini and uplift curves).
 
